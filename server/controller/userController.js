@@ -1,60 +1,72 @@
 import userModel from "../models/userModel.js";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
 import validator from "validator";
 
-//login
+const createToken = (id) => {
+	return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "2h" });
+};
+
+// Login
 const loginUser = async (req, res) => {
 	const { email, password } = req.body;
 	try {
-		const user = await userModel.findOne({ email });
+		const user = await userModel.findOne({ email: email.toLowerCase() });
 		if (!user) {
-			return res.json({ success: false, message: "user doesn't exist" });
+			return res
+				.status(404)
+				.json({ success: false, message: "User doesn't exist" });
 		}
-		const isMatch = await bcrypt.compare(password, user.password);
+		const isMatch = await user.comparePassword(password);
 		if (!isMatch) {
-			return res.json({ sucess: false, message: "Invalid credentials" });
+			return res
+				.status(401)
+				.json({ success: false, message: "Invalid credentials" });
 		}
 		const token = createToken(user._id);
-		res.json({ success: true, token });
+		res.status(200).json({ success: true, token });
 	} catch (error) {
 		console.log(error);
-		res.json({ sucess: false, message: "Error" });
+		res.status(500).json({
+			success: false,
+			message: "Internal server error",
+		});
 	}
 };
-const createToken = (id) => {
-	return jwt.sign({ id }, process.env.JWT_SECRET);
-};
 
+// Register
 const registerUser = async (req, res) => {
-	const { name, password, email } = req.body;
+	const { name, email, password } = req.body;
 	try {
-		const exists = await userModel.findOne({ email });
+		const exists = await userModel.findOne({ email: email.toLowerCase() });
 		if (exists) {
-			return res.json({ success: false, message: "user already exists" });
+			return res
+				.status(409)
+				.json({ success: false, message: "User already exists" });
 		}
 		if (!validator.isEmail(email)) {
-			return res.json({ success: false, message: "email is Invalid" });
+			return res
+				.status(400)
+				.json({ success: false, message: "Invalid email" });
 		}
 		if (password.length < 8) {
-			return res.json({
-				success: false,
-				message: "Please enter a strong Password",
-			});
+			return res
+				.status(400)
+				.json({ success: false, message: "Password too weak" });
 		}
-		const salt = await bcrypt.genSalt(10);
-		const hashedPassword = await bcrypt.hash(password, salt);
-		const newUser = new userModel({
-			name: name,
-			email: email,
-			password: hashedPassword,
-		});
-		const user = await newUser.save();
-		const token = createToken(user._id);
-		res.json({ success: true, token });
+		const newUser = await new userModel({
+			name,
+			email: email.toLowerCase(),
+			password,
+		}).save();
+
+		const token = createToken(newUser._id);
+		res.status(201).json({ success: true, token });
 	} catch (error) {
 		console.log(error);
-		res.json({ success: false, message: "Error" });
+		res.status(500).json({
+			success: false,
+			message: "Internal server error",
+		});
 	}
 };
 
